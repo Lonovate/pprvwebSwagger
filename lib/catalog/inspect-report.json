@@ -1,0 +1,335 @@
+{
+  "swaggerInfo": {
+    "title": "MiddleWare",
+    "version": "v1"
+  },
+  "openapiVersion": "3.0.4",
+  "totalEndpoints": 182,
+  "methodsOverall": {
+    "POST": 173,
+    "GET": 9
+  },
+  "uniqueTagCount": 22,
+  "tagBreakdown": [
+    {
+      "tag": "BookingCatalog",
+      "count": 34,
+      "methods": {
+        "POST": 34
+      },
+      "samplePaths": [
+        "POST /api/BookingCatalog/GetBookingCatalogSummaryByProperty",
+        "POST /api/BookingCatalog/GetBookingServicesByProperty",
+        "POST /api/BookingCatalog/GetBookingServiceById",
+        "POST /api/BookingCatalog/CreateOrUpdateBookingService",
+        "POST /api/BookingCatalog/DeleteBookingService"
+      ]
+    },
+    {
+      "tag": "Communication",
+      "count": 31,
+      "methods": {
+        "POST": 31
+      },
+      "samplePaths": [
+        "POST /api/Communication/GetAllCommunicationPageDetails",
+        "POST /api/Communication/GetAllMailGroupsByProperty",
+        "POST /api/Communication/CreateUpdateGroup",
+        "POST /api/Communication/communications-by-month",
+        "POST /api/Communication/CreateEmailTemplate"
+      ]
+    },
+    {
+      "tag": "Membership",
+      "count": 18,
+      "methods": {
+        "GET": 2,
+        "POST": 16
+      },
+      "samplePaths": [
+        "GET /api/Membership/types",
+        "POST /api/Membership/typesByProperty",
+        "POST /api/Membership/CreateType",
+        "POST /api/Membership/UpdateType",
+        "POST /api/Membership/types/archive"
+      ]
+    },
+    {
+      "tag": "Department",
+      "count": 12,
+      "methods": {
+        "POST": 12
+      },
+      "samplePaths": [
+        "POST /GetAllDepartmentDetailsByProperty",
+        "POST /UpdateDepartment",
+        "POST /GetDepartmentSettingByProperty",
+        "POST /CreateOrUpdateServicesAndSubServices",
+        "POST /DeleteServiceBy"
+      ]
+    },
+    {
+      "tag": "Request",
+      "count": 10,
+      "methods": {
+        "POST": 10
+      },
+      "samplePaths": [
+        "POST /api/Request/GetAllRequestByUserAndProperty",
+        "POST /api/Request/UserValidation",
+        "POST /api/Request/CreateRequest",
+        "POST /api/Request/BahiaFolioRequest",
+        "POST /api/Request/GetAllTicketsTable"
+      ]
+    },
+    {
+      "tag": "List",
+      "count": 7,
+      "methods": {
+        "POST": 7
+      },
+      "samplePaths": [
+        "POST /GetListBy",
+        "POST /GetAllListsByProperty",
+        "POST /GetActiveEndUsersByProperty",
+        "POST /CreateOrUpdateList",
+        "POST /DeleteListBy"
+      ]
+    },
+    {
+      "tag": "Survey",
+      "count": 7,
+      "methods": {
+        "POST": 7
+      },
+      "samplePaths": [
+        "POST /api/Survey/GetSurveyByProperty",
+        "POST /api/Survey/CreateOrUpdateSurvey",
+        "POST /api/Survey/DeleteSurveyByQuestion",
+        "POST /api/Survey/GetSurveyQuestionsBy",
+        "POST /api/Survey/CreateQuestions"
+      ]
+    },
+    {
+      "tag": "TemplateRenderer",
+      "count": 7,
+      "methods": {
+        "POST": 7
+      },
+      "samplePaths": [
+        "POST /RenderTemplate",
+        "POST /CreateOrUpdateContentBlock",
+        "POST /GetContentBlocksByProperty",
+        "POST /CreateOrUpdateContentPart",
+        "POST /GetContentPartsByProperty"
+      ]
+    },
+    {
+      "tag": "Tiles",
+      "count": 6,
+      "methods": {
+        "POST": 6
+      },
+      "samplePaths": [
+        "POST /api/Tiles/GetTilesByProperty",
+        "POST /api/Tiles/UpdateTile",
+        "POST /api/Tiles/GetTilesItemListByTile",
+        "POST /api/Tiles/GetTileItemBy",
+        "POST /api/Tiles/CreateOrUpdateTileItem"
+      ]
+    },
+    {
+      "tag": "Venue",
+      "count": 6,
+      "methods": {
+        "POST": 6
+      },
+      "samplePaths": [
+        "POST /GetAllVenueByProperty",
+        "POST /GetVenueBy",
+        "POST /CreateOrUpdateVenue",
+        "POST /DeleteVenue",
+        "POST /CreateOrUpdateMenu"
+      ]
+    },
+    {
+      "tag": "Invoice",
+      "count": 5,
+      "methods": {
+        "POST": 5
+      },
+      "samplePaths": [
+        "POST /api/Invoice/get-invoice-by-profile",
+        "POST /api/Invoice/get-invoice-by-id",
+        "POST /api/Invoice/create",
+        "POST /api/Invoice/update",
+        "POST /api/Invoice/cancel"
+      ]
+    },
+    {
+      "tag": "Property",
+      "count": 5,
+      "methods": {
+        "GET": 2,
+        "POST": 3
+      },
+      "samplePaths": [
+        "GET /api/Property/GetProperties",
+        "GET /api/Property/GetPropertiesForDashBoard",
+        "POST /api/Property/GetCmsViewByProperty",
+        "POST /api/Property/PropertyUpdate",
+        "POST /api/Property/GenerateQRCodeTest"
+      ]
+    },
+    {
+      "tag": "Transactions",
+      "count": 5,
+      "methods": {
+        "POST": 5
+      },
+      "samplePaths": [
+        "POST /api/Transactions/get-by-profile",
+        "POST /api/Transactions/get-by-id",
+        "POST /api/Transactions/create",
+        "POST /api/Transactions/update",
+        "POST /api/Transactions/delete"
+      ]
+    },
+    {
+      "tag": "Vehicle",
+      "count": 5,
+      "methods": {
+        "POST": 5
+      },
+      "samplePaths": [
+        "POST /api/Vehicle/Create",
+        "POST /api/Vehicle/Update",
+        "POST /api/Vehicle/Delete",
+        "POST /api/Vehicle/GetById",
+        "POST /api/Vehicle/GetByMembership"
+      ]
+    },
+    {
+      "tag": "Document",
+      "count": 4,
+      "methods": {
+        "POST": 4
+      },
+      "samplePaths": [
+        "POST /api/Document/getAllForProfile",
+        "POST /api/Document/upload",
+        "POST /api/Document/replace",
+        "POST /api/Document/delete"
+      ]
+    },
+    {
+      "tag": "GroupImport",
+      "count": 4,
+      "methods": {
+        "POST": 2,
+        "GET": 2
+      },
+      "samplePaths": [
+        "POST /api/GroupImport/members",
+        "GET /api/GroupImport/jobs/{jobId}",
+        "GET /api/GroupImport/jobs/{jobId}/errors",
+        "POST /api/GroupImport/jobs/{jobId}/cancel"
+      ]
+    },
+    {
+      "tag": "Report",
+      "count": 4,
+      "methods": {
+        "POST": 4
+      },
+      "samplePaths": [
+        "POST /TopRoomServiceReport",
+        "POST /TopServiceReport",
+        "POST /TopLocationItemReport",
+        "POST /TopRequestedItemReport"
+      ]
+    },
+    {
+      "tag": "AppUser",
+      "count": 3,
+      "methods": {
+        "POST": 3
+      },
+      "samplePaths": [
+        "POST /Login",
+        "POST /GetProfileByAppUser",
+        "POST /UpdateProfile"
+      ]
+    },
+    {
+      "tag": "MiddleWare",
+      "count": 3,
+      "methods": {
+        "GET": 2,
+        "POST": 1
+      },
+      "samplePaths": [
+        "GET /healthz",
+        "GET /",
+        "POST /webhooks/acs/sms"
+      ]
+    },
+    {
+      "tag": "QrCode",
+      "count": 3,
+      "methods": {
+        "POST": 2,
+        "GET": 1
+      },
+      "samplePaths": [
+        "POST /api/QrCode/create-tracking",
+        "GET /api/QrCode/qr/{token}",
+        "POST /api/QrCode/qr/report"
+      ]
+    },
+    {
+      "tag": "Media",
+      "count": 2,
+      "methods": {
+        "POST": 2
+      },
+      "samplePaths": [
+        "POST /AddOrEditMedia",
+        "POST /DeleteMedia"
+      ]
+    },
+    {
+      "tag": "Chat",
+      "count": 1,
+      "methods": {
+        "POST": 1
+      },
+      "samplePaths": [
+        "POST /CreateChatMessage"
+      ]
+    }
+  ],
+  "untaggedCount": 0,
+  "untaggedSample": [],
+  "operationIds": {
+    "withId": 0,
+    "missing": 182,
+    "duplicates": [],
+    "duplicateCount": 0
+  },
+  "auth": {
+    "globalSecurity": null,
+    "securitySchemes": {
+      "Bearer": {
+        "type": "apiKey",
+        "description": "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+        "name": "Authorization",
+        "in": "header"
+      }
+    }
+  },
+  "nonJsonResponseOps": [],
+  "nonJsonResponseOpsCount": 0,
+  "componentSchemaCount": 418,
+  "servers": null
+}

@@ -4,14 +4,22 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npm run fetch:swagger && npm run build:catalog",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "fetch:swagger": "tsx scripts/fetch-swagger.ts",
+    "build:catalog": "tsx scripts/build-catalog.ts",
+    "inspect:swagger": "tsx scripts/inspect-tags.ts",
+    "generate:system-prompt": "tsx scripts/generate-system-prompt.ts",
+    "verify:themes": "tsx scripts/verify-themes.ts",
+    "test": "tsx --test lib/openapi/slice.test.ts"
   },
   "dependencies": {
     "next": "16.2.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -21,6 +29,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }
