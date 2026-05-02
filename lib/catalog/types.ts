@@ -1,8 +1,9 @@
 /**
  * lib/catalog/types.ts
- * Minimal OpenAPI 3.x types — we don't need full coverage, just enough to
- * thread the source swagger and our themed output through the slicer.
+ * Minimal OpenAPI 3.x types — covers what the slicer + registry need.
  */
+
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export interface OperationObject {
   tags?: string[];

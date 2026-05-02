@@ -1,37 +1,29 @@
 /**
  * lib/openapi/slice.ts
  * --------------------------------------------------------------------------
- * Build a themed OpenAPI 3.x schema by:
- *   1. Filtering source swagger paths by the theme's tags + allowedMethods.
- *   2. Synthesizing deterministic operationIds (source has none).
- *   3. Recursively walking $ref graph to collect ONLY referenced components.
- *   4. Always preserving components.securitySchemes (Bearer auth in our case).
- *   5. Injecting servers: [{ url: <serverUrl> }].
+ * Build a themed OpenAPI 3.x schema from the source swagger and a resolved
+ * theme. The theme map is now passed in (not imported), so the slicer is
+ * decoupled from any static config.
  *
- * The ref walker handles:
- *   - Standard $ref like "#/components/schemas/Foo"
- *   - Discriminator mapping references (string values that look like refs)
- *   - Circular references (visited set prevents infinite loops)
- *   - Nested arrays + objects of arbitrary depth
- *
- * Refs that don't point at #/components/<section>/<name> are silently
- * skipped — the source becomes the resulting schema's responsibility.
+ * Responsibilities:
+ *   1. Filter source paths by the theme's tags + allowedMethods.
+ *   2. Synthesize deterministic operationIds (source has none).
+ *   3. Recursively walk $ref graph; collect ONLY referenced components.
+ *   4. Always preserve components.securitySchemes (Bearer auth).
+ *   5. Inject servers: [{ url: <serverUrl> }].
  * --------------------------------------------------------------------------
  */
 
 import type {
   ComponentsSection,
+  HttpMethod,
   OpenAPIComponents,
   OperationObject,
   PathItem,
   SourceSwagger,
   ThemedSchema,
 } from "../catalog/types";
-import {
-  THEMES,
-  type HttpMethod,
-  type ThemeConfig,
-} from "@/config/themes";
+import type { ResolvedTheme } from "../themes/registry";
 
 const HTTP_METHODS = new Set([
   "get",
@@ -46,8 +38,6 @@ const HTTP_METHODS = new Set([
 
 export interface SliceOptions {
   serverUrl?: string;
-  /** Override config; primarily for tests */
-  themesOverride?: Record<string, ThemeConfig>;
 }
 
 const DEFAULT_SERVER_URL = "https://pprvmw.com";
@@ -92,7 +82,6 @@ function collectRefs(node: unknown, out: Set<string>): void {
     if (k === "$ref" && typeof v === "string") {
       out.add(v);
     } else if (k === "discriminator" && v && typeof v === "object") {
-      // discriminator.mapping has values that are refs (strings)
       const mapping = (v as Record<string, unknown>).mapping;
       if (mapping && typeof mapping === "object") {
         for (const mv of Object.values(mapping as Record<string, unknown>)) {
@@ -133,7 +122,6 @@ export function pickReferencedComponents(
 
     (result[info.section] ??= {} as ComponentsSection)[info.name] = component;
 
-    // Walk this component for nested refs
     const nestedRefs = new Set<string>();
     collectRefs(component, nestedRefs);
     for (const r of nestedRefs) {
@@ -149,10 +137,10 @@ export function pickReferencedComponents(
 export function buildThemedSchema(
   themeKey: string,
   source: SourceSwagger,
+  themes: Record<string, ResolvedTheme>,
   options: SliceOptions = {},
 ): ThemedSchema {
-  const themesMap = options.themesOverride ?? (THEMES as unknown as Record<string, ThemeConfig>);
-  const cfg = themesMap[themeKey];
+  const cfg = themes[themeKey];
   if (!cfg) {
     throw new Error(`Unknown theme: ${themeKey}`);
   }
@@ -186,8 +174,6 @@ export function buildThemedSchema(
 
   const components = pickReferencedComponents(source.components, [filteredPaths]);
 
-  // Always preserve securitySchemes — VIVI needs it to wire auth even if no
-  // operation $refs them directly.
   if (source.components?.securitySchemes) {
     components.securitySchemes = { ...source.components.securitySchemes };
   }

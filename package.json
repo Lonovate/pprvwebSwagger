@@ -1,19 +1,16 @@
 {
   "name": "vivi-themed-openapi",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "npm run fetch:swagger && npm run build:catalog",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "fetch:swagger": "tsx scripts/fetch-swagger.ts",
-    "build:catalog": "tsx scripts/build-catalog.ts",
     "inspect:swagger": "tsx scripts/inspect-tags.ts",
     "generate:system-prompt": "tsx scripts/generate-system-prompt.ts",
     "verify:themes": "tsx scripts/verify-themes.ts",
-    "test": "tsx --test lib/openapi/slice.test.ts"
+    "test": "tsx --test lib/openapi/slice.test.ts lib/themes/registry.test.ts"
   },
   "dependencies": {
     "next": "16.2.4",

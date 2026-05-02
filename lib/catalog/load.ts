@@ -1,17 +1,8 @@
 /**
- * lib/catalog/load.ts
- * Loads the normalized catalog (catalog.json) into memory.
- *
- * We import the JSON directly so Next.js bundles it with the route handler
- * and Vercel's outputFileTracing doesn't have to guess. JSON parse happens
- * once at module init.
+ * lib/catalog/load.ts (legacy shim)
+ * The canonical loader is now lib/catalog/runtime.ts. This shim is kept
+ * only for backwards compatibility — re-export `loadCatalog` from there.
  */
 
-import catalogData from "./catalog.json";
-import type { SourceSwagger } from "./types";
-
-const CATALOG = catalogData as unknown as SourceSwagger;
-
-export function loadCatalog(): SourceSwagger {
-  return CATALOG;
-}
+export { loadCatalog, SWAGGER_CACHE_TAG, DEFAULT_SWAGGER_URL } from "./runtime";
+export type { CatalogResult } from "./runtime";

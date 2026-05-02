@@ -1,20 +1,14 @@
 /**
  * lib/agent/system-prompt.ts
- * --------------------------------------------------------------------------
- * Generates the VIVI agent system prompt directly from config/themes.ts so
- * the prompt and the imported Custom API integrations never drift.
- *
- * Add a theme → re-run `npm run generate:system-prompt` (or hit
- * GET /system-prompt) and paste the new prompt into VIVI. Done.
- * --------------------------------------------------------------------------
+ * Generates the VIVI agent system prompt from a resolved theme map. Themes
+ * are passed in (no static import) so the prompt reflects whatever the
+ * runtime registry produced.
  */
 
-import { THEMES, VIVI_THEME_KEYS, type ThemeConfig } from "@/config/themes";
+import type { ResolvedTheme } from "@/lib/themes/registry";
 
 export interface GenerateOptions {
-  /** Source API base URL — referenced in the auth section */
   sourceApiUrl?: string;
-  /** Optional product/system name for the opening line */
   systemName?: string;
 }
 
@@ -23,11 +17,15 @@ const DEFAULTS: Required<GenerateOptions> = {
   systemName: "MiddleWare property / membership management system",
 };
 
-export function generateSystemPrompt(options: GenerateOptions = {}): string {
+export function generateSystemPrompt(
+  themes: Record<string, ResolvedTheme>,
+  options: GenerateOptions = {},
+): string {
   const opts = { ...DEFAULTS, ...options };
+  const visible = Object.values(themes).filter((t) => t.exposeToVivi);
   return [
     intro(opts),
-    integrationsSection(),
+    integrationsSection(visible),
     authSection(),
     rulesSection(),
     fallbackSection(),
@@ -42,27 +40,25 @@ function intro(o: Required<GenerateOptions>): string {
   ].join(" ");
 }
 
-function integrationsSection(): string {
-  const themes = VIVI_THEME_KEYS.map((k) => formatTheme(k, THEMES[k])).join("\n\n");
+function integrationsSection(themes: ResolvedTheme[]): string {
   return [
     "## Available integrations",
     "",
-    `You have ${VIVI_THEME_KEYS.length} integrations:`,
+    `You have ${themes.length} integrations:`,
     "",
-    themes,
+    themes.map(formatTheme).join("\n\n"),
   ].join("\n");
 }
 
-function formatTheme(key: string, cfg: ThemeConfig): string {
+function formatTheme(t: ResolvedTheme): string {
   const triggers =
-    cfg.triggers.length > 0
-      ? `\n**Sample user phrases:** ${cfg.triggers.map((t) => `"${t}"`).join(", ")}`
+    t.triggers.length > 0
+      ? `\n**Sample user phrases:** ${t.triggers.map((s) => `"${s}"`).join(", ")}`
       : "";
-  const sourceTags = cfg.tags.join(", ");
   return [
-    `### ${cfg.title}  \`(integration key: ${key})\``,
-    `**Source tag(s):** ${sourceTags}`,
-    `**When to use:** ${cfg.description}${triggers}`,
+    `### ${t.title}  \`(integration key: ${t.key})\``,
+    `**Source tag(s):** ${t.tags.join(", ")}`,
+    `**When to use:** ${t.description}${triggers}`,
   ].join("\n");
 }
 
@@ -85,13 +81,13 @@ function rulesSection(): string {
     "## Rules",
     "",
     "1. **Auth before write.** Never call a create/update/delete/cancel endpoint without an active session token.",
-    "2. **Read before write.** Before creating, modifying, or deleting an entity, look it up first (search by id, by name, by property, etc.) to confirm you have the correct one.",
+    "2. **Read before write.** Before creating, modifying, or deleting an entity, look it up first to confirm you have the correct one.",
     "3. **Never invent endpoints.** Use only endpoints from the imported integrations. If no endpoint exists for the request, say so and ask how to proceed.",
-    "4. **Cross-integration chains are normal.** A booking might require Auth → Membership lookup → Booking checkout. Plan the sequence before the first call.",
+    "4. **Cross-integration chains are normal.** Plan the sequence (e.g., Auth → Membership → Booking) before the first call.",
     "5. **Confirm destructive operations.** Before delete / cancel / deactivate / no-show, summarize what you are about to do and ask for confirmation.",
-    "6. **Surface errors verbatim.** When an API returns an error message, repeat the relevant detail to the user and ask how to proceed. Do not retry blindly.",
+    "6. **Surface errors verbatim.** When an API returns an error message, repeat the relevant detail and ask how to proceed. Do not retry blindly.",
     "7. **Respect property scoping.** Many endpoints take a property id; if the user has not specified one, ask which property they mean (or check the JWT claims) before calling.",
-    "8. **Do not echo secrets.** Never include passwords, raw JWTs, or other credentials in your reply to the user.",
+    "8. **Do not echo secrets.** Never include passwords, raw JWTs, or other credentials in your reply.",
   ].join("\n");
 }
 

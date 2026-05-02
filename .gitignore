@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated artifacts (no longer needed at build time)
+lib/catalog/swagger-source.json
+lib/catalog/catalog.json
+lib/agent/system-prompt.md
