@@ -60,6 +60,7 @@ export function DashboardClient({ meta, refreshAction }: Props) {
   const [promptCopying, setPromptCopying] = useState(false);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   function refresh() {
     setError(null);
@@ -100,6 +101,28 @@ export function DashboardClient({ meta, refreshAction }: Props) {
     }
   }
 
+  async function downloadFile(url: string, filename: string) {
+    setError(null);
+    setDownloading(true);
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
 
   return (
@@ -112,19 +135,7 @@ export function DashboardClient({ meta, refreshAction }: Props) {
               Slices the source swagger into themed OpenAPI schemas for VIVI.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={copySystemPrompt}
-              disabled={promptCopying || refreshing}
-              className="rounded-lg bg-slate-700 px-4 py-2 font-medium text-slate-100 shadow hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Generates the latest VIVI agent system prompt and copies it to your clipboard."
-            >
-              {copied === "system-prompt"
-                ? "Prompt copied ✓"
-                : promptCopying
-                  ? "Generating…"
-                  : "Copy system prompt"}
-            </button>
+          <div className="flex flex-col gap-2 items-end">
             <button
               onClick={refresh}
               disabled={refreshing || promptCopying}
@@ -132,6 +143,52 @@ export function DashboardClient({ meta, refreshAction }: Props) {
             >
               {refreshing ? "Refreshing…" : "Refresh from source"}
             </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={copySystemPrompt}
+                disabled={promptCopying || refreshing}
+                className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Copy the concierge agent prompt to clipboard."
+              >
+                {copied === "system-prompt"
+                  ? "Copied ✓"
+                  : promptCopying
+                    ? "Generating…"
+                    : "Copy prompt"}
+              </button>
+              <button
+                onClick={() => downloadFile("/api/docs/agent-prompt", "agent-prompt.docx")}
+                disabled={downloading || refreshing}
+                className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Layer 1: Agent instructions — what the product does, how to think, where to find API info."
+              >
+                Agent prompt
+              </button>
+              <button
+                onClick={() => downloadFile("/api/docs/api-docs-prompt", "api-documentation-prompt.docx")}
+                disabled={downloading || refreshing}
+                className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Layer 2: API integration guide — domains, routing rules, auth flow."
+              >
+                API docs prompt
+              </button>
+              <button
+                onClick={() => downloadFile("/api/docs/download", "endpoints.md.docx")}
+                disabled={downloading || refreshing}
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Endpoint reference document with schemas, tables, and example bodies."
+              >
+                Endpoints .docx
+              </button>
+              <button
+                onClick={() => downloadFile("/api/docs/endpoints-json", "endpoints.json")}
+                disabled={downloading || refreshing}
+                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Layer 3: Technical endpoint spec (JSON) with exact paths, types, and example bodies."
+              >
+                Endpoints .json
+              </button>
+            </div>
           </div>
         </header>
 
@@ -251,9 +308,11 @@ export function DashboardClient({ meta, refreshAction }: Props) {
 
         <footer className="mt-12 border-t border-slate-800 pt-6 text-xs text-slate-500">
           <p>
-            Backend dev workflow: deploy a new endpoint or tag in pprvmw → click{" "}
-            <span className="font-semibold text-slate-300">Refresh from source</span> above → new themes appear here automatically. Then click{" "}
-            <span className="font-semibold text-slate-300">Copy system prompt</span> and paste into VIVI. Add new VIVI integrations only if a brand-new theme appeared.
+            Bot knowledge stack: <span className="font-semibold text-slate-300">Agent prompt</span> (Layer 1 — product capabilities + instructions) →{" "}
+            <span className="font-semibold text-slate-300">API docs prompt</span> (Layer 2 — domain routing + auth rules) →{" "}
+            <span className="font-semibold text-slate-300">Endpoints .docx</span> (endpoint reference with schemas) →{" "}
+            <span className="font-semibold text-slate-300">Endpoints .json</span> (Layer 3 — technical spec). Upload all four to your bot{`'`}s knowledge base.{" "}
+            After backend deploys, click <span className="font-semibold text-slate-300">Refresh from source</span> and re-download.
           </p>
         </footer>
       </div>
