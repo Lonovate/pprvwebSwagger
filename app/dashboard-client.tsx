@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 
 export interface ThemeRow {
   key: string;
@@ -30,6 +30,16 @@ export interface SwaggerEnv {
   url: string;
 }
 
+type SourceFormat = "swagger" | "postman" | "graphql" | "har" | "curl";
+
+const FORMAT_OPTIONS: { value: SourceFormat; label: string; icon: string }[] = [
+  { value: "swagger", label: "Swagger / OpenAPI", icon: "{ }" },
+  { value: "postman", label: "Postman", icon: "PM" },
+  { value: "graphql", label: "GraphQL", icon: "GQL" },
+  { value: "har", label: "HAR File", icon: "HAR" },
+  { value: "curl", label: "cURL", icon: ">" },
+];
+
 const CUSTOM_KEY = "__custom__";
 
 interface Props {
@@ -41,12 +51,8 @@ interface Props {
 function fmtTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
 }
 
@@ -58,8 +64,7 @@ function relative(iso: string): string {
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 export function DashboardClient({ meta: initialMeta, refreshAction, environments }: Props) {
@@ -71,187 +76,260 @@ export function DashboardClient({ meta: initialMeta, refreshAction, environments
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
-  // Environment selector state
-  const initialEnv = environments.find((e) => e.url === initialMeta.swaggerUrl)?.url ?? CUSTOM_KEY;
-  const [selectedEnv, setSelectedEnv] = useState<string>(initialEnv);
-  const [customUrl, setCustomUrl] = useState<string>(
-    initialEnv === CUSTOM_KEY ? initialMeta.swaggerUrl : "",
+  // Source selector state
+  const [format, setFormat] = useState<SourceFormat>("swagger");
+  const [selectedEnv, setSelectedEnv] = useState<string>(
+    environments.find((e) => e.url === initialMeta.swaggerUrl)?.url ?? CUSTOM_KEY,
   );
+  const [customUrl, setCustomUrl] = useState("");
+  const [curlText, setCurlText] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /** The active swagger URL based on current selection. */
-  function activeSwaggerUrl(): string {
-    if (selectedEnv === CUSTOM_KEY) return customUrl.trim();
-    return selectedEnv;
+  /** Build the query param for download routes. */
+  function downloadParam(): string {
+    if (sessionId) return `?sid=${sessionId}`;
+    if (format === "swagger") {
+      const url = selectedEnv === CUSTOM_KEY ? customUrl.trim() : selectedEnv;
+      return url ? `?url=${encodeURIComponent(url)}` : "";
+    }
+    return sessionId ? `?sid=${sessionId}` : "";
   }
 
-  /** URL query param to append to API routes. */
-  function urlParam(): string {
-    const url = activeSwaggerUrl();
-    return url ? `?url=${encodeURIComponent(url)}` : "";
-  }
+  // ─── Refresh / Parse ────────────────────────────────────────────────────────
 
   async function refresh() {
     setError(null);
-    const swaggerUrl = activeSwaggerUrl();
 
-    if (!swaggerUrl) {
-      setError("Please enter a swagger URL or select an environment.");
+    if (format === "swagger") {
+      const swaggerUrl = selectedEnv === CUSTOM_KEY ? customUrl.trim() : selectedEnv;
+      if (!swaggerUrl) { setError("Enter a swagger URL or select an environment."); return; }
+
+      startRefreshing(async () => {
+        try {
+          if (swaggerUrl === environments[0]?.url) await refreshAction();
+          const r = await fetch(`/api/meta?url=${encodeURIComponent(swaggerUrl)}`, { cache: "no-store" });
+          if (!r.ok) { const b = await r.json().catch(() => null); throw new Error(b?.error ?? `HTTP ${r.status}`); }
+          const data = await r.json();
+          setSessionId(null);
+          setMeta({
+            lastFetched: data.lastFetched, swaggerUrl: data.swaggerUrl,
+            sourceTitle: data.sourceTitle ?? "—", sourceVersion: data.sourceVersion ?? "",
+            totalEndpoints: data.totalEndpoints, totalThemes: data.totalThemes,
+            visibleThemes: data.visibleThemes, themes: data.themes,
+          });
+        } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+      });
       return;
     }
 
+    // Non-swagger format — use /api/parse
     startRefreshing(async () => {
       try {
-        // If it's the default production URL, also invalidate server cache
-        if (swaggerUrl === environments[0].url) {
-          await refreshAction();
+        const formData = new FormData();
+        formData.set("format", format);
+
+        if (format === "curl") {
+          if (!curlText.trim()) { setError("Paste one or more cURL commands."); return; }
+          formData.set("text", curlText);
+        } else if (customUrl.trim()) {
+          formData.set("url", customUrl.trim());
+        } else {
+          const file = fileInputRef.current?.files?.[0];
+          if (!file) { setError("Provide a URL or upload a file."); return; }
+          formData.set("file", file);
         }
 
-        // Fetch fresh metadata from the selected source
-        const r = await fetch(`/api/meta?url=${encodeURIComponent(swaggerUrl)}`, {
-          cache: "no-store",
-        });
-        if (!r.ok) {
-          const body = await r.json().catch(() => null);
-          throw new Error(body?.error ?? `HTTP ${r.status}`);
-        }
+        const r = await fetch("/api/parse", { method: "POST", body: formData });
+        if (!r.ok) { const b = await r.json().catch(() => null); throw new Error(b?.error ?? `HTTP ${r.status}`); }
         const data = await r.json();
+        setSessionId(data.sid);
         setMeta({
-          lastFetched: data.lastFetched,
-          swaggerUrl: data.swaggerUrl,
-          sourceTitle: data.sourceTitle ?? "—",
-          sourceVersion: data.sourceVersion ?? "",
-          totalEndpoints: data.totalEndpoints,
-          totalThemes: data.totalThemes,
-          visibleThemes: data.visibleThemes,
-          themes: data.themes,
+          lastFetched: data.lastFetched, swaggerUrl: data.swaggerUrl,
+          sourceTitle: data.sourceTitle ?? "—", sourceVersion: data.sourceVersion ?? "",
+          totalEndpoints: data.totalEndpoints, totalThemes: data.totalThemes,
+          visibleThemes: data.visibleThemes, themes: data.themes,
         });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     });
   }
+
+  // ─── Helpers ────────────────────────────────────────────────────────────────
 
   async function copyText(text: string, label: string) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(label);
       setTimeout(() => setCopied(null), 1500);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }
 
   async function copySystemPrompt() {
     setError(null);
     setPromptCopying(true);
     try {
-      const r = await fetch(`/system-prompt${urlParam()}`, { cache: "no-store" });
+      const r = await fetch(`/system-prompt${downloadParam()}`, { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const text = await r.text();
       await navigator.clipboard.writeText(text);
       setCopied("system-prompt");
       setPromptPreview(text);
       setTimeout(() => setCopied(null), 2000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPromptCopying(false);
-    }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setPromptCopying(false); }
   }
 
   async function downloadFile(path: string, filename: string) {
     setError(null);
     setDownloading(true);
     try {
-      const separator = path.includes("?") ? "&" : "?";
-      const fullUrl = activeSwaggerUrl()
-        ? `${path}${separator}url=${encodeURIComponent(activeSwaggerUrl())}`
-        : path;
+      const param = downloadParam();
+      const sep = path.includes("?") ? "&" : "?";
+      const fullUrl = param ? `${path}${sep}${param.slice(1)}` : path;
       const r = await fetch(fullUrl, { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const blob = await r.blob();
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      a.href = blobUrl; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(blobUrl);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDownloading(false);
-    }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setDownloading(false); }
   }
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const busy = refreshing || promptCopying || downloading;
 
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Swagger OpenAPI Doc Generator</h1>
-            <p className="mt-1 text-slate-400">
-              Slices any swagger into themed OpenAPI schemas, documentation, and agent prompts.
-            </p>
-          </div>
+        <header>
+          <h1 className="text-3xl font-bold tracking-tight">Swagger OpenAPI Doc Generator</h1>
+          <p className="mt-1 text-slate-400">
+            Generate documentation, prompts, and endpoint specs from any API source.
+          </p>
         </header>
 
-        {/* ── Swagger Source Selector ── */}
-        <section className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">
-                Swagger source
-              </label>
-              <select
-                value={selectedEnv}
-                onChange={(e) => {
-                  setSelectedEnv(e.target.value);
-                  if (e.target.value !== CUSTOM_KEY) setCustomUrl("");
-                }}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-              >
-                {environments.map((env) => (
-                  <option key={env.url} value={env.url}>
-                    {env.label}
-                  </option>
-                ))}
-                <option value={CUSTOM_KEY}>Custom URL...</option>
-              </select>
-            </div>
+        {/* ── Format Tabs ── */}
+        <div className="mt-6 flex flex-wrap gap-1">
+          {FORMAT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => { setFormat(opt.value); setSessionId(null); setError(null); }}
+              className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                format === opt.value
+                  ? "bg-slate-800 text-slate-100 border-b-2 border-emerald-400"
+                  : "bg-slate-900 text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span className="mr-1.5 font-mono text-xs opacity-60">{opt.icon}</span>
+              {opt.label}
+            </button>
+          ))}
+        </div>
 
-            {selectedEnv === CUSTOM_KEY && (
-              <div className="flex-[2] min-w-[300px]">
-                <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">
-                  Custom swagger URL
-                </label>
+        {/* ── Source Input ── */}
+        <section className="rounded-b-xl rounded-tr-xl border border-slate-800 bg-slate-900 p-4">
+          {format === "swagger" && (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-50">
+                <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">Environment</label>
+                <select
+                  value={selectedEnv}
+                  onChange={(e) => { setSelectedEnv(e.target.value); if (e.target.value !== CUSTOM_KEY) setCustomUrl(""); }}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                >
+                  {environments.map((env) => (
+                    <option key={env.url} value={env.url}>{env.label}</option>
+                  ))}
+                  <option value={CUSTOM_KEY}>Custom URL...</option>
+                </select>
+              </div>
+              {selectedEnv === CUSTOM_KEY && (
+                <div className="flex-2 min-w-75">
+                  <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">Swagger URL</label>
+                  <input
+                    type="url" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)}
+                    placeholder="https://example.com/swagger/v1/swagger.json"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+              )}
+              <button onClick={refresh} disabled={busy}
+                className="rounded-lg bg-emerald-500 px-5 py-2 font-medium text-slate-900 shadow hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50">
+                {refreshing ? "Refreshing..." : "Refresh from source"}
+              </button>
+            </div>
+          )}
+
+          {(format === "postman" || format === "graphql") && (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-50">
+                <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">URL (optional)</label>
                 <input
-                  type="url"
-                  value={customUrl}
-                  onChange={(e) => setCustomUrl(e.target.value)}
-                  placeholder="https://example.com/swagger/v1/swagger.json"
+                  type="url" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)}
+                  placeholder={format === "graphql" ? "https://api.example.com/graphql" : "https://api.getpostman.com/collections/..."}
                   className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
                 />
               </div>
-            )}
-
-            <button
-              onClick={refresh}
-              disabled={busy}
-              className="rounded-lg bg-emerald-500 px-5 py-2 font-medium text-slate-900 shadow hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {refreshing ? "Refreshing..." : "Refresh from source"}
-            </button>
-          </div>
-
-          {selectedEnv !== CUSTOM_KEY && (
-            <div className="mt-2 text-xs text-slate-500 truncate">
-              {selectedEnv}
+              <div className="text-sm text-slate-500 self-center">or</div>
+              <div>
+                <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">Upload file</label>
+                <input ref={fileInputRef} type="file" accept=".json"
+                  className="text-sm text-slate-400 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-700 file:px-3 file:py-1.5 file:text-sm file:text-slate-200 file:cursor-pointer hover:file:bg-slate-600"
+                />
+              </div>
+              <button onClick={refresh} disabled={busy}
+                className="rounded-lg bg-emerald-500 px-5 py-2 font-medium text-slate-900 shadow hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50">
+                {refreshing ? "Parsing..." : "Parse & generate"}
+              </button>
             </div>
+          )}
+
+          {format === "har" && (
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">Upload HAR file</label>
+                <input ref={fileInputRef} type="file" accept=".har,.json"
+                  className="text-sm text-slate-400 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-700 file:px-3 file:py-1.5 file:text-sm file:text-slate-200 file:cursor-pointer hover:file:bg-slate-600"
+                />
+              </div>
+              <p className="text-xs text-slate-500 self-center">Export from browser DevTools → Network tab → Save all as HAR</p>
+              <button onClick={refresh} disabled={busy}
+                className="rounded-lg bg-emerald-500 px-5 py-2 font-medium text-slate-900 shadow hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50">
+                {refreshing ? "Parsing..." : "Parse & generate"}
+              </button>
+            </div>
+          )}
+
+          {format === "curl" && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">
+                  Paste cURL commands (one per block, supports multi-line with \)
+                </label>
+                <textarea
+                  value={curlText} onChange={(e) => setCurlText(e.target.value)}
+                  rows={6}
+                  placeholder={`curl -X POST https://api.example.com/users \\
+  -H "Authorization: Bearer token123" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "John", "email": "john@example.com"}'`}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 font-mono focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <button onClick={refresh} disabled={busy}
+                className="rounded-lg bg-emerald-500 px-5 py-2 font-medium text-slate-900 shadow hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50">
+                {refreshing ? "Parsing..." : "Parse & generate"}
+              </button>
+            </div>
+          )}
+
+          {format === "swagger" && selectedEnv !== CUSTOM_KEY && (
+            <div className="mt-2 text-xs text-slate-500 truncate">{selectedEnv}</div>
           )}
         </section>
 
@@ -263,154 +341,76 @@ export function DashboardClient({ meta: initialMeta, refreshAction, environments
 
         {/* ── Stats ── */}
         <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Stat
-            label="Source"
-            value={meta.sourceTitle}
-            sub={meta.sourceVersion ? `v${meta.sourceVersion}` : undefined}
-          />
+          <Stat label="Source" value={meta.sourceTitle} sub={meta.sourceVersion ? `v${meta.sourceVersion}` : undefined} />
           <Stat label="Endpoints" value={String(meta.totalEndpoints)} />
-          <Stat
-            label="Themes"
-            value={String(meta.visibleThemes)}
-            sub={`${meta.totalThemes} total`}
-          />
-          <Stat
-            label="Last refresh"
-            value={relative(meta.lastFetched)}
-            sub={fmtTime(meta.lastFetched)}
-          />
+          <Stat label="Themes" value={String(meta.visibleThemes)} sub={`${meta.totalThemes} total`} />
+          <Stat label="Last refresh" value={relative(meta.lastFetched)} sub={fmtTime(meta.lastFetched)} />
         </section>
 
         {/* ── Downloads ── */}
         <section className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Downloads
-            </h2>
-            <span className="text-xs text-slate-500">
-              All files generated from: {meta.swaggerUrl.length > 60
-                ? meta.swaggerUrl.slice(0, 57) + "..."
-                : meta.swaggerUrl}
-            </span>
-          </div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-3">Downloads</h2>
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={copySystemPrompt}
-              disabled={busy}
-              className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Copy the concierge agent prompt to clipboard."
-            >
-              {copied === "system-prompt"
-                ? "Copied ✓"
-                : promptCopying
-                  ? "Generating..."
-                  : "Copy prompt"}
+            <button onClick={copySystemPrompt} disabled={busy}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50">
+              {copied === "system-prompt" ? "Copied ✓" : promptCopying ? "Generating..." : "Copy prompt"}
             </button>
-            <button
-              onClick={() => downloadFile("/api/docs/agent-prompt", "agent-prompt.docx")}
-              disabled={busy}
+            <button onClick={() => downloadFile("/api/docs/agent-prompt", "agent-prompt.docx")} disabled={busy}
               className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Layer 1: Agent instructions — product capabilities, decision flow."
-            >
-              Agent prompt
-            </button>
-            <button
-              onClick={() => downloadFile("/api/docs/api-docs-prompt", "api-documentation-prompt.docx")}
-              disabled={busy}
+              title="Layer 1: Agent instructions">Agent prompt</button>
+            <button onClick={() => downloadFile("/api/docs/api-docs-prompt", "api-documentation-prompt.docx")} disabled={busy}
               className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Layer 2: API integration guide — domains, routing rules, auth flow."
-            >
-              API docs prompt
-            </button>
-            <button
-              onClick={() => downloadFile("/api/docs/download", "endpoints.md.docx")}
-              disabled={busy}
+              title="Layer 2: API integration guide">API docs prompt</button>
+            <button onClick={() => downloadFile("/api/docs/download", "endpoints.md.docx")} disabled={busy}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Endpoint reference document with schemas, tables, and example bodies."
-            >
-              Endpoints .docx
-            </button>
-            <button
-              onClick={() => downloadFile("/api/docs/endpoints-json", "endpoints.json")}
-              disabled={busy}
+              title="Endpoint reference with schemas and examples">Endpoints .docx</button>
+            <button onClick={() => downloadFile("/api/docs/endpoints-json", "endpoints.json")} disabled={busy}
               className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Layer 3: Technical endpoint spec (JSON) with exact paths, types, and example bodies."
-            >
-              Endpoints .json
-            </button>
+              title="Layer 3: Technical endpoint spec (JSON)">Endpoints .json</button>
           </div>
         </section>
 
         {/* ── Quick links ── */}
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-          <a href="/themes" className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">
-            /themes JSON
-          </a>
-          <a href={`/system-prompt${urlParam()}`} className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">
-            /system-prompt
-          </a>
-          <a href="/health" className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">
-            /health
-          </a>
+          <a href="/themes" className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">/themes JSON</a>
+          <a href={`/system-prompt${downloadParam()}`} className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">/system-prompt</a>
+          <a href="/health" className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">/health</a>
         </div>
 
         {/* ── Themes ── */}
         <h2 className="mt-10 text-xl font-semibold">Themes ({meta.themes.length})</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Each theme below = one Custom API integration. Click {`"`}Copy URL{`"`} and paste it {`'`}s {`"`}Import from URL{`"`} field.
+          Each theme below = one API domain. Click {`"`}Copy URL{`"`} to get the themed schema URL.
         </p>
 
         <ul className="mt-4 grid gap-4 sm:grid-cols-2">
           {meta.themes.map((t) => (
-            <li
-              key={t.key}
-              className={`rounded-xl border p-4 ${
-                t.hidden ? "border-slate-800 bg-slate-900/40 opacity-60" : "border-slate-800 bg-slate-900"
-              }`}
-            >
+            <li key={t.key} className={`rounded-xl border p-4 ${t.hidden ? "border-slate-800 bg-slate-900/40 opacity-60" : "border-slate-800 bg-slate-900"}`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="font-semibold text-slate-100">{t.title}</h3>
                   <code className="text-xs text-slate-400">{t.key}</code>
                 </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    t.hidden
-                      ? "bg-slate-700/40 text-slate-400"
-                      : t.autoGenerated
-                        ? "bg-amber-500/20 text-amber-300"
-                        : "bg-emerald-500/20 text-emerald-300"
-                  }`}
-                >
-                  {t.hidden ? "hidden" : t.autoGenerated ? "auto" : "curated"}
-                </span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  t.hidden ? "bg-slate-700/40 text-slate-400" : t.autoGenerated ? "bg-amber-500/20 text-amber-300" : "bg-emerald-500/20 text-emerald-300"
+                }`}>{t.hidden ? "hidden" : t.autoGenerated ? "auto" : "curated"}</span>
               </div>
               <p className="mt-2 line-clamp-3 text-sm text-slate-300">{t.description}</p>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
                 {t.sourceTags.map((tag) => (
-                  <span key={tag} className="rounded bg-slate-800 px-2 py-0.5 text-slate-300">
-                    {tag}
-                  </span>
+                  <span key={tag} className="rounded bg-slate-800 px-2 py-0.5 text-slate-300">{tag}</span>
                 ))}
                 <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-400">{t.operationCount} ops</span>
                 <span className="rounded bg-slate-800 px-2 py-0.5 text-slate-400">{t.allowedMethods.join(" · ")}</span>
               </div>
               {!t.hidden && (
                 <div className="mt-3 flex gap-2 text-xs">
-                  <button
-                    onClick={() => copyText(`${baseUrl}${t.schemaUrl}`, t.key)}
-                    className="rounded bg-slate-800 px-3 py-1 text-slate-200 hover:bg-slate-700"
-                  >
+                  <button onClick={() => copyText(`${baseUrl}${t.schemaUrl}`, t.key)}
+                    className="rounded bg-slate-800 px-3 py-1 text-slate-200 hover:bg-slate-700">
                     {copied === t.key ? "Copied!" : "Copy URL"}
                   </button>
-                  <a
-                    href={t.schemaUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded bg-slate-800 px-3 py-1 text-slate-200 hover:bg-slate-700"
-                  >
-                    Open schema
-                  </a>
+                  <a href={t.schemaUrl} target="_blank" rel="noopener noreferrer"
+                    className="rounded bg-slate-800 px-3 py-1 text-slate-200 hover:bg-slate-700">Open schema</a>
                 </div>
               )}
             </li>
@@ -422,21 +422,14 @@ export function DashboardClient({ meta: initialMeta, refreshAction, environments
             <summary className="cursor-pointer text-sm font-semibold text-slate-200">
               System prompt preview ({promptPreview.length.toLocaleString()} chars) — already copied to clipboard
             </summary>
-            <pre className="mt-3 max-h-96 overflow-auto rounded bg-slate-950 p-3 text-xs leading-relaxed text-slate-300">
-              {promptPreview}
-            </pre>
+            <pre className="mt-3 max-h-96 overflow-auto rounded bg-slate-950 p-3 text-xs leading-relaxed text-slate-300">{promptPreview}</pre>
           </details>
         )}
 
         <footer className="mt-12 border-t border-slate-800 pt-6 text-xs text-slate-500">
           <p>
-            Select an environment or paste any swagger URL above, then click{" "}
-            <span className="font-semibold text-slate-300">Refresh from source</span>.{" "}
-            All downloads will reflect the selected swagger. Upload the four files to your bot{`'`}s knowledge base:{" "}
-            <span className="font-semibold text-slate-300">Agent prompt</span> (Layer 1) →{" "}
-            <span className="font-semibold text-slate-300">API docs prompt</span> (Layer 2) →{" "}
-            <span className="font-semibold text-slate-300">Endpoints .docx</span> →{" "}
-            <span className="font-semibold text-slate-300">Endpoints .json</span> (Layer 3).
+            Supports Swagger/OpenAPI URLs, Postman Collections, GraphQL schemas, HAR files, and cURL commands.
+            Select a format above, provide the source, and generate documentation + agent prompts.
           </p>
         </footer>
       </div>
