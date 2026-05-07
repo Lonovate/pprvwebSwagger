@@ -1,19 +1,18 @@
 /**
- * GET /api/docs/download
- * Generates an endpoints.docx file from the current swagger source,
- * matching the structure of the original endpoints.md.docx document.
+ * GET /api/docs/download?url=...
+ * Generates an endpoints.docx file from the swagger source.
  */
 
 import { NextResponse } from "next/server";
-import { loadCatalog } from "@/lib/catalog/runtime";
+import { resolveCatalog } from "@/lib/catalog/resolve";
 import { generateEndpointsDocx } from "@/lib/docs/generate-docx";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const cat = await loadCatalog();
-    const buffer = await generateEndpointsDocx(cat.swagger);
+    const cat = await resolveCatalog(request);
+    const buffer = await generateEndpointsDocx(cat.swagger, cat.baseUrl);
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,

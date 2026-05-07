@@ -1,17 +1,17 @@
 /**
  * app/system-prompt/route.ts
- * GET /system-prompt → text/plain
+ * GET /system-prompt?url=... → text/plain
  * Returns the concierge agent prompt (Layer 1).
  */
 
 import { generateConciergePrompt } from "@/lib/agent/concierge-prompt";
-import { loadCatalog } from "@/lib/catalog/runtime";
+import { resolveCatalog } from "@/lib/catalog/resolve";
 import { deriveThemes } from "@/lib/themes/registry";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const cat = await loadCatalog();
+export async function GET(request: Request) {
+  const cat = await resolveCatalog(request);
   const themes = deriveThemes(cat.swagger);
   const text = generateConciergePrompt(themes);
   return new Response(text, {

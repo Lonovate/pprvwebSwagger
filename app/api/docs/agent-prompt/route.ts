@@ -13,15 +13,15 @@ import {
   TextRun,
   HeadingLevel,
 } from "docx";
-import { loadCatalog } from "@/lib/catalog/runtime";
+import { resolveCatalog } from "@/lib/catalog/resolve";
 import { deriveThemes } from "@/lib/themes/registry";
 import { generateConciergePrompt } from "@/lib/agent/concierge-prompt";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const cat = await loadCatalog();
+    const cat = await resolveCatalog(request);
     const themes = deriveThemes(cat.swagger);
     const markdown = generateConciergePrompt(themes);
 

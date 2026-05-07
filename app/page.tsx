@@ -1,17 +1,12 @@
 /**
  * app/page.tsx (Server Component)
  *
- * Server-renders the dashboard. Data is fetched directly via loadCatalog()
- * + deriveThemes() — no /api/meta round trip from the client. The Refresh
- * button calls a Server Action which invalidates the cache and forces a
- * re-render of this page.
- *
- * All interactivity (copy buttons, "Copied!" feedback, prompt preview) lives
- * in the DashboardClient client component.
+ * Server-renders the dashboard. Passes environment config and initial data
+ * to the client component. The client manages environment switching.
  */
 
 import { revalidatePath, revalidateTag } from "next/cache";
-import { loadCatalog, SWAGGER_CACHE_TAG } from "@/lib/catalog/runtime";
+import { loadCatalog, SWAGGER_CACHE_TAG, getSwaggerEnvironments } from "@/lib/catalog/runtime";
 import { deriveThemes } from "@/lib/themes/registry";
 import { DashboardClient, type DashboardMeta } from "./dashboard-client";
 
@@ -60,5 +55,17 @@ export default async function Home() {
     themes: themeList,
   };
 
-  return <DashboardClient meta={meta} refreshAction={refreshAction} />;
+  // Pass env config to client (no secrets — just public swagger URLs)
+  const envs = getSwaggerEnvironments().map((e) => ({
+    label: e.label,
+    url: e.url,
+  }));
+
+  return (
+    <DashboardClient
+      meta={meta}
+      refreshAction={refreshAction}
+      environments={envs}
+    />
+  );
 }

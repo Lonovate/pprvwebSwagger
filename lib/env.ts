@@ -7,14 +7,12 @@
 import { z } from "zod";
 
 const schema = z.object({
-  SOURCE_API_URL: z
-    .string()
-    .url()
-    .default("https://pprvmw.com"),
-  SWAGGER_URL: z
-    .string()
-    .url()
-    .default("https://pprvmw.com/swagger/v1/swagger.json"),
+  // Production
+  SOURCE_API_URL: z.string().url().default("https://example.com"),
+  SWAGGER_URL: z.string().url().default("https://example.com/swagger/v1/swagger.json"),
+  // Development
+  DEV_API_URL: z.string().url().default("https://example.com"),
+  DEV_SWAGGER_URL: z.string().url().default("https://example.com/swagger/v1/swagger.json"),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -26,6 +24,8 @@ export function getEnv(): Env {
   cached = schema.parse({
     SOURCE_API_URL: process.env.SOURCE_API_URL,
     SWAGGER_URL: process.env.SWAGGER_URL,
+    DEV_API_URL: process.env.DEV_API_URL,
+    DEV_SWAGGER_URL: process.env.DEV_SWAGGER_URL,
   });
   return cached;
 }

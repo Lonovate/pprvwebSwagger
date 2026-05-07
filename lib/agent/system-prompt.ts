@@ -17,7 +17,7 @@ export interface GenerateOptions {
 }
 
 const DEFAULTS: Required<GenerateOptions> = {
-  sourceApiUrl: "https://pprvmw.com",
+  sourceApiUrl: process.env.SOURCE_API_URL || "https://pprvmw.com",
   systemName: "MiddleWare",
 };
 

@@ -25,9 +25,17 @@ export interface DashboardMeta {
   themes: ThemeRow[];
 }
 
+export interface SwaggerEnv {
+  label: string;
+  url: string;
+}
+
+const CUSTOM_KEY = "__custom__";
+
 interface Props {
   meta: DashboardMeta;
   refreshAction: () => Promise<void>;
+  environments: SwaggerEnv[];
 }
 
 function fmtTime(iso: string): string {
@@ -54,7 +62,8 @@ function relative(iso: string): string {
   return `${d}d ago`;
 }
 
-export function DashboardClient({ meta, refreshAction }: Props) {
+export function DashboardClient({ meta: initialMeta, refreshAction, environments }: Props) {
+  const [meta, setMeta] = useState<DashboardMeta>(initialMeta);
   const [refreshing, startRefreshing] = useTransition();
   const [copied, setCopied] = useState<string | null>(null);
   const [promptCopying, setPromptCopying] = useState(false);
@@ -62,11 +71,60 @@ export function DashboardClient({ meta, refreshAction }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
-  function refresh() {
+  // Environment selector state
+  const initialEnv = environments.find((e) => e.url === initialMeta.swaggerUrl)?.url ?? CUSTOM_KEY;
+  const [selectedEnv, setSelectedEnv] = useState<string>(initialEnv);
+  const [customUrl, setCustomUrl] = useState<string>(
+    initialEnv === CUSTOM_KEY ? initialMeta.swaggerUrl : "",
+  );
+
+  /** The active swagger URL based on current selection. */
+  function activeSwaggerUrl(): string {
+    if (selectedEnv === CUSTOM_KEY) return customUrl.trim();
+    return selectedEnv;
+  }
+
+  /** URL query param to append to API routes. */
+  function urlParam(): string {
+    const url = activeSwaggerUrl();
+    return url ? `?url=${encodeURIComponent(url)}` : "";
+  }
+
+  async function refresh() {
     setError(null);
+    const swaggerUrl = activeSwaggerUrl();
+
+    if (!swaggerUrl) {
+      setError("Please enter a swagger URL or select an environment.");
+      return;
+    }
+
     startRefreshing(async () => {
       try {
-        await refreshAction();
+        // If it's the default production URL, also invalidate server cache
+        if (swaggerUrl === environments[0].url) {
+          await refreshAction();
+        }
+
+        // Fetch fresh metadata from the selected source
+        const r = await fetch(`/api/meta?url=${encodeURIComponent(swaggerUrl)}`, {
+          cache: "no-store",
+        });
+        if (!r.ok) {
+          const body = await r.json().catch(() => null);
+          throw new Error(body?.error ?? `HTTP ${r.status}`);
+        }
+        const data = await r.json();
+        setMeta({
+          lastFetched: data.lastFetched,
+          swaggerUrl: data.swaggerUrl,
+          sourceTitle: data.sourceTitle ?? "—",
+          sourceVersion: data.sourceVersion ?? "",
+          totalEndpoints: data.totalEndpoints,
+          totalThemes: data.totalThemes,
+          visibleThemes: data.visibleThemes,
+          themes: data.themes,
+        });
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -87,7 +145,7 @@ export function DashboardClient({ meta, refreshAction }: Props) {
     setError(null);
     setPromptCopying(true);
     try {
-      const r = await fetch("/system-prompt", { cache: "no-store" });
+      const r = await fetch(`/system-prompt${urlParam()}`, { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const text = await r.text();
       await navigator.clipboard.writeText(text);
@@ -101,11 +159,15 @@ export function DashboardClient({ meta, refreshAction }: Props) {
     }
   }
 
-  async function downloadFile(url: string, filename: string) {
+  async function downloadFile(path: string, filename: string) {
     setError(null);
     setDownloading(true);
     try {
-      const r = await fetch(url, { cache: "no-store" });
+      const separator = path.includes("?") ? "&" : "?";
+      const fullUrl = activeSwaggerUrl()
+        ? `${path}${separator}url=${encodeURIComponent(activeSwaggerUrl())}`
+        : path;
+      const r = await fetch(fullUrl, { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const blob = await r.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -124,81 +186,83 @@ export function DashboardClient({ meta, refreshAction }: Props) {
   }
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const busy = refreshing || promptCopying || downloading;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">VIVI Themed OpenAPI</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Swagger OpenAPI Doc Generator</h1>
             <p className="mt-1 text-slate-400">
-              Slices the source swagger into themed OpenAPI schemas for VIVI.
+              Slices any swagger into themed OpenAPI schemas, documentation, and agent prompts.
             </p>
-          </div>
-          <div className="flex flex-col gap-2 items-end">
-            <button
-              onClick={refresh}
-              disabled={refreshing || promptCopying}
-              className="rounded-lg bg-emerald-500 px-4 py-2 font-medium text-slate-900 shadow hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {refreshing ? "Refreshing…" : "Refresh from source"}
-            </button>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={copySystemPrompt}
-                disabled={promptCopying || refreshing}
-                className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Copy the concierge agent prompt to clipboard."
-              >
-                {copied === "system-prompt"
-                  ? "Copied ✓"
-                  : promptCopying
-                    ? "Generating…"
-                    : "Copy prompt"}
-              </button>
-              <button
-                onClick={() => downloadFile("/api/docs/agent-prompt", "agent-prompt.docx")}
-                disabled={downloading || refreshing}
-                className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Layer 1: Agent instructions — what the product does, how to think, where to find API info."
-              >
-                Agent prompt
-              </button>
-              <button
-                onClick={() => downloadFile("/api/docs/api-docs-prompt", "api-documentation-prompt.docx")}
-                disabled={downloading || refreshing}
-                className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Layer 2: API integration guide — domains, routing rules, auth flow."
-              >
-                API docs prompt
-              </button>
-              <button
-                onClick={() => downloadFile("/api/docs/download", "endpoints.md.docx")}
-                disabled={downloading || refreshing}
-                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Endpoint reference document with schemas, tables, and example bodies."
-              >
-                Endpoints .docx
-              </button>
-              <button
-                onClick={() => downloadFile("/api/docs/endpoints-json", "endpoints.json")}
-                disabled={downloading || refreshing}
-                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Layer 3: Technical endpoint spec (JSON) with exact paths, types, and example bodies."
-              >
-                Endpoints .json
-              </button>
-            </div>
           </div>
         </header>
 
+        {/* ── Swagger Source Selector ── */}
+        <section className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">
+                Swagger source
+              </label>
+              <select
+                value={selectedEnv}
+                onChange={(e) => {
+                  setSelectedEnv(e.target.value);
+                  if (e.target.value !== CUSTOM_KEY) setCustomUrl("");
+                }}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+              >
+                {environments.map((env) => (
+                  <option key={env.url} value={env.url}>
+                    {env.label}
+                  </option>
+                ))}
+                <option value={CUSTOM_KEY}>Custom URL...</option>
+              </select>
+            </div>
+
+            {selectedEnv === CUSTOM_KEY && (
+              <div className="flex-[2] min-w-[300px]">
+                <label className="block text-xs uppercase tracking-wide text-slate-500 mb-1">
+                  Custom swagger URL
+                </label>
+                <input
+                  type="url"
+                  value={customUrl}
+                  onChange={(e) => setCustomUrl(e.target.value)}
+                  placeholder="https://example.com/swagger/v1/swagger.json"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            )}
+
+            <button
+              onClick={refresh}
+              disabled={busy}
+              className="rounded-lg bg-emerald-500 px-5 py-2 font-medium text-slate-900 shadow hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {refreshing ? "Refreshing..." : "Refresh from source"}
+            </button>
+          </div>
+
+          {selectedEnv !== CUSTOM_KEY && (
+            <div className="mt-2 text-xs text-slate-500 truncate">
+              {selectedEnv}
+            </div>
+          )}
+        </section>
+
         {error && (
-          <div className="mt-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-200">
+          <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-200">
             <strong>Error:</strong> {error}
           </div>
         )}
 
-        <section className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {/* ── Stats ── */}
+        <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Stat
             label="Source"
             value={meta.sourceTitle}
@@ -217,15 +281,72 @@ export function DashboardClient({ meta, refreshAction }: Props) {
           />
         </section>
 
+        {/* ── Downloads ── */}
+        <section className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+              Downloads
+            </h2>
+            <span className="text-xs text-slate-500">
+              All files generated from: {meta.swaggerUrl.length > 60
+                ? meta.swaggerUrl.slice(0, 57) + "..."
+                : meta.swaggerUrl}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={copySystemPrompt}
+              disabled={busy}
+              className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Copy the concierge agent prompt to clipboard."
+            >
+              {copied === "system-prompt"
+                ? "Copied ✓"
+                : promptCopying
+                  ? "Generating..."
+                  : "Copy prompt"}
+            </button>
+            <button
+              onClick={() => downloadFile("/api/docs/agent-prompt", "agent-prompt.docx")}
+              disabled={busy}
+              className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Layer 1: Agent instructions — product capabilities, decision flow."
+            >
+              Agent prompt
+            </button>
+            <button
+              onClick={() => downloadFile("/api/docs/api-docs-prompt", "api-documentation-prompt.docx")}
+              disabled={busy}
+              className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Layer 2: API integration guide — domains, routing rules, auth flow."
+            >
+              API docs prompt
+            </button>
+            <button
+              onClick={() => downloadFile("/api/docs/download", "endpoints.md.docx")}
+              disabled={busy}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Endpoint reference document with schemas, tables, and example bodies."
+            >
+              Endpoints .docx
+            </button>
+            <button
+              onClick={() => downloadFile("/api/docs/endpoints-json", "endpoints.json")}
+              disabled={busy}
+              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-slate-100 shadow hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Layer 3: Technical endpoint spec (JSON) with exact paths, types, and example bodies."
+            >
+              Endpoints .json
+            </button>
+          </div>
+        </section>
+
+        {/* ── Quick links ── */}
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-          <span className="text-slate-400">Source URL:</span>
-          <code className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200">
-            {meta.swaggerUrl}
-          </code>
           <a href="/themes" className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">
             /themes JSON
           </a>
-          <a href="/system-prompt" className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">
+          <a href={`/system-prompt${urlParam()}`} className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">
             /system-prompt
           </a>
           <a href="/health" className="text-emerald-400 hover:text-emerald-300" target="_blank" rel="noopener noreferrer">
@@ -233,9 +354,10 @@ export function DashboardClient({ meta, refreshAction }: Props) {
           </a>
         </div>
 
+        {/* ── Themes ── */}
         <h2 className="mt-10 text-xl font-semibold">Themes ({meta.themes.length})</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Each theme below = one Custom API integration in VIVI. Click {`"`}Copy URL{`"`} and paste it into VIVI{`'`}s {`"`}Import from URL{`"`} field.
+          Each theme below = one Custom API integration. Click {`"`}Copy URL{`"`} and paste it {`'`}s {`"`}Import from URL{`"`} field.
         </p>
 
         <ul className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -308,11 +430,13 @@ export function DashboardClient({ meta, refreshAction }: Props) {
 
         <footer className="mt-12 border-t border-slate-800 pt-6 text-xs text-slate-500">
           <p>
-            Bot knowledge stack: <span className="font-semibold text-slate-300">Agent prompt</span> (Layer 1 — product capabilities + instructions) →{" "}
-            <span className="font-semibold text-slate-300">API docs prompt</span> (Layer 2 — domain routing + auth rules) →{" "}
-            <span className="font-semibold text-slate-300">Endpoints .docx</span> (endpoint reference with schemas) →{" "}
-            <span className="font-semibold text-slate-300">Endpoints .json</span> (Layer 3 — technical spec). Upload all four to your bot{`'`}s knowledge base.{" "}
-            After backend deploys, click <span className="font-semibold text-slate-300">Refresh from source</span> and re-download.
+            Select an environment or paste any swagger URL above, then click{" "}
+            <span className="font-semibold text-slate-300">Refresh from source</span>.{" "}
+            All downloads will reflect the selected swagger. Upload the four files to your bot{`'`}s knowledge base:{" "}
+            <span className="font-semibold text-slate-300">Agent prompt</span> (Layer 1) →{" "}
+            <span className="font-semibold text-slate-300">API docs prompt</span> (Layer 2) →{" "}
+            <span className="font-semibold text-slate-300">Endpoints .docx</span> →{" "}
+            <span className="font-semibold text-slate-300">Endpoints .json</span> (Layer 3).
           </p>
         </footer>
       </div>

@@ -35,7 +35,6 @@ import {
 } from "docx";
 import type { SourceSwagger } from "@/lib/catalog/types";
 
-const BASE_URL = "https://pprvmw.com";
 const HTTP_METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
 interface EndpointInfo {
@@ -349,7 +348,10 @@ function buildFieldTable(schema: SchemaObj, schemas: Schemas): Table | null {
 
 // ─── Main export: generate .docx ────────────────────────────────────────────
 
-export async function generateEndpointsDocx(swagger: SourceSwagger): Promise<Buffer> {
+export async function generateEndpointsDocx(
+  swagger: SourceSwagger,
+  baseUrl = process.env.SOURCE_API_URL || "https://pprvmw.com",
+): Promise<Buffer> {
   const schemas = getSchemas(swagger);
   const endpointsByTag = extractEndpointsByTag(swagger);
   const allTags = [...endpointsByTag.keys()];
@@ -387,7 +389,7 @@ export async function generateEndpointsDocx(swagger: SourceSwagger): Promise<Buf
     new Paragraph({
       children: [
         new TextRun({
-          text: `Base URL: ${BASE_URL}\nAuth: Bearer JWT in Authorization header (obtain via /Login)\nContent-Type: application/json`,
+          text: `Base URL: ${baseUrl}\nAuth: Bearer JWT in Authorization header (obtain via /Login)\nContent-Type: application/json`,
         }),
       ],
     }),
@@ -527,7 +529,10 @@ export interface EndpointJsonEntry {
   exampleBody?: Record<string, unknown>;
 }
 
-export function generateEndpointsJson(swagger: SourceSwagger): object {
+export function generateEndpointsJson(
+  swagger: SourceSwagger,
+  baseUrl = process.env.SOURCE_API_URL || "https://pprvmw.com",
+): object {
   const schemas = getSchemas(swagger);
   const endpointsByTag = extractEndpointsByTag(swagger);
 
@@ -609,7 +614,7 @@ export function generateEndpointsJson(swagger: SourceSwagger): object {
     info: {
       title: `${swagger.info?.title ?? "API"} - Bot Reference`,
       version: swagger.info?.version ?? "1.0",
-      baseUrl: BASE_URL,
+      baseUrl: baseUrl,
       description:
         "Bot-friendly compiled reference of all endpoints. Look up by key (Tag.Operation). Each entry has path, method, what it does, fields with type/required/description, and a ready-to-send exampleBody.",
       auth: "Bearer JWT in Authorization header (obtain via /Login)",

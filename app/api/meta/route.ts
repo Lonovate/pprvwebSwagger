@@ -1,18 +1,18 @@
 /**
  * app/api/meta/route.ts
- * GET /api/meta — JSON metadata used by the dashboard page.
- * Includes lastFetched timestamp, source info, and the resolved theme list.
+ * GET /api/meta?url=... — JSON metadata used by the dashboard.
+ * Supports dynamic swagger URL via ?url= query param.
  */
 
 import { NextResponse } from "next/server";
-import { loadCatalog } from "@/lib/catalog/runtime";
+import { resolveCatalog } from "@/lib/catalog/resolve";
 import { deriveThemes } from "@/lib/themes/registry";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const cat = await loadCatalog();
+    const cat = await resolveCatalog(request);
     const themes = deriveThemes(cat.swagger);
 
     let totalOps = 0;
@@ -41,8 +41,8 @@ export async function GET() {
       ok: true,
       lastFetched: cat.lastFetched,
       swaggerUrl: cat.swaggerUrl,
-      sourceTitle: cat.swagger.info?.title,
-      sourceVersion: cat.swagger.info?.version,
+      sourceTitle: cat.swagger.info?.title ?? "—",
+      sourceVersion: cat.swagger.info?.version ?? "",
       totalEndpoints: totalOps,
       totalThemes: themeList.length,
       visibleThemes: themeList.filter((t) => !t.hidden).length,

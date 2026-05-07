@@ -40,7 +40,7 @@ export interface SliceOptions {
   serverUrl?: string;
 }
 
-const DEFAULT_SERVER_URL = "https://pprvmw.com";
+const DEFAULT_SERVER_URL = process.env.SOURCE_API_URL || "https://pprvmw.com";
 
 // ---------- operationId generation -----------------------------------------
 

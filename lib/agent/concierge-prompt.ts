@@ -27,7 +27,7 @@ export interface ConciergePromptOptions {
 
 const DEFAULTS = {
   propertyId: "[PROPERTY_ID]",
-  sourceApiUrl: "https://pprvmw.com",
+  sourceApiUrl: process.env.SOURCE_API_URL || "https://pprvmw.com",
 };
 
 export function generateConciergePrompt(

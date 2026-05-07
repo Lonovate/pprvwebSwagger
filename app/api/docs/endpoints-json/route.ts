@@ -1,19 +1,18 @@
 /**
- * GET /api/docs/endpoints-json
- * Generates an endpoints.json file from the current swagger source,
- * matching the structure the VIVI bot uses for endpoint lookup.
+ * GET /api/docs/endpoints-json?url=...
+ * Generates an endpoints.json file from the swagger source.
  */
 
 import { NextResponse } from "next/server";
-import { loadCatalog } from "@/lib/catalog/runtime";
+import { resolveCatalog } from "@/lib/catalog/resolve";
 import { generateEndpointsJson } from "@/lib/docs/generate-docx";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const cat = await loadCatalog();
-    const json = generateEndpointsJson(cat.swagger);
+    const cat = await resolveCatalog(request);
+    const json = generateEndpointsJson(cat.swagger, cat.baseUrl);
     const body = JSON.stringify(json, null, 2);
 
     return new NextResponse(body, {
